@@ -41,6 +41,33 @@ app.post("/api/generate-testcases", async (req, res) => {
   }
 });
 
+const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
+
+app.post("/api/generate-tc", async (req, res) => {
+    const { prompt } = req.body;
+  
+    try {
+      const response = await fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent?key=${GEMINI_API_KEY}`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            contents: [{ parts: [{ text: prompt }] }],
+          }),
+        }
+      );
+  
+      const data = await response.json();
+      const text = data?.candidates?.[0]?.content?.parts?.[0]?.text ?? "No result";
+  
+      res.json({ result: text });
+    } catch (err) {
+      console.error("Gemini API error:", err);
+      res.status(500).json({ error: "Gemini API 요청 실패" });
+    }
+  });
+
 app.listen(PORT, () => {
   console.log(`Server listening on port ${PORT}`);
 }); 
