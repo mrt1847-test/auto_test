@@ -4,6 +4,9 @@ import { MarkdownEditor } from "@/components/MarkdownEditor";
 import { TestCaseTable } from "@/components/TestCaseTable";
 import { parseMarkdownToTCs, TestCase } from "@/utils/parseMarkdownToTCs";
 
+type ApiModel = "openai" | "gemini" | "claude";
+type PromptDomain = "ecommerce" | "backoffice" | "mobile";
+
 export default function App() {
   const [markdown, setMarkdown] = useState(`### POST /api/login
 
@@ -21,6 +24,8 @@ export default function App() {
   const [aiResult, setAiResult] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [apiModel, setApiModel] = useState<ApiModel>("gemini");
+  const [domain, setDomain] = useState<PromptDomain>("ecommerce");
 
   const tcs: TestCase[] = parseMarkdownToTCs(markdown);
 
@@ -29,14 +34,37 @@ export default function App() {
     setLoading(true);
     setError("");
     setAiResult("");
+
+    let endpoint = "";
+    let body = {};
+
+    switch (apiModel) {
+      case "openai":
+        endpoint = "/api/generate-testcases";
+        body = { prompt: markdown, domain };
+        break;
+      case "gemini":
+        endpoint = "/api/generate-tc";
+        body = { prompt: markdown, domain };
+        break;
+      case "claude":
+        endpoint = "/api/generate-claude-tc";
+        body = { prompt: markdown, domain };
+        break;
+    }
+
     try {
-      const response = await fetch("/api/generate-tc", {
+      const response = await fetch(endpoint, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ prompt: markdown }),
+        body: JSON.stringify(body),
       });
       const data = await response.json();
-      setAiResult(data.result);
+      if (response.ok) {
+        setAiResult(data.result);
+      } else {
+        setError(data.error || "AI API 호출 실패");
+      }
     } catch (err) {
       setError("AI API 호출 실패");
     } finally {
@@ -51,6 +79,24 @@ export default function App() {
       <MarkdownEditor markdown={markdown} onMarkdownChange={setMarkdown} />
 
       <div className="flex items-center gap-4">
+        <select
+          value={apiModel}
+          onChange={(e) => setApiModel(e.target.value as ApiModel)}
+          className="px-4 py-2 border rounded"
+        >
+          <option value="gemini">Gemini</option>
+          <option value="openai">GPT</option>
+          <option value="claude">Claude</option>
+        </select>
+        <select
+          value={domain}
+          onChange={(e) => setDomain(e.target.value as PromptDomain)}
+          className="px-4 py-2 border rounded"
+        >
+          <option value="ecommerce">이커머스</option>
+          <option value="backoffice">백오피스</option>
+          <option value="mobile">모바일</option>
+        </select>
         <button
           className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
           onClick={handleGenerateByAI}

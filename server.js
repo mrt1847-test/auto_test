@@ -62,12 +62,16 @@ const PROMPTS = {
 };
 
 app.post("/api/generate-testcases", async (req, res) => {
-  const { apiSpec } = req.body;
-  const OPENAI_API_KEY = process.env.OPENAI_API_KEY; // 환경변수로 관리 권장
+  const { prompt, domain } = req.body; // 'prompt'로 변경, 'domain' 추가
+  const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
 
   if (!OPENAI_API_KEY) {
     return res.status(500).json({ error: "OpenAI API Key not set" });
   }
+
+  const domainPrompt = PROMPTS[domain] || "";
+  const systemPrompt = `${COMMON_PROMPT}\n${domainPrompt}`;
+  const userPrompt = `아래는 테스트 대상이 되는 API 스펙이야:\n${prompt}`;
 
   try {
     const response = await fetch("https://api.openai.com/v1/chat/completions", {
@@ -77,16 +81,22 @@ app.post("/api/generate-testcases", async (req, res) => {
         "Authorization": `Bearer ${OPENAI_API_KEY}`,
       },
       body: JSON.stringify({
-        model: "gpt-3.5-turbo", // 또는 gpt-4
+        model: "gpt-3.5-turbo",
         messages: [
-          { role: "system", content: "당신은 API 테스트 케이스를 잘 만드는 전문가입니다." },
-          { role: "user", content: `아래 API 스펙 문서를 참고해서 테스트 케이스를 마크다운 표로 만들어줘.\n\n${apiSpec}` }
+          { role: "system", content: systemPrompt },
+          { role: "user", content: userPrompt },
         ],
         temperature: 0.2,
       }),
     });
 
     const data = await response.json();
+
+    if (data.error) {
+      console.error("OpenAI API Error:", data.error);
+      return res.status(500).json({ error: data.error.message || "OpenAI API 호출 중 에러 발생" });
+    }
+
     res.json({ result: data.choices[0].message.content });
   } catch (err) {
     res.status(500).json({ error: "OpenAI API 호출 실패", detail: err.message });
@@ -119,6 +129,44 @@ app.post("/api/generate-tc", async (req, res) => {
   } catch (err) {
     console.error("Gemini API error:", err);
     res.status(500).json({ error: "Gemini API 요청 실패" });
+  }
+});
+
+const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY;
+
+app.post("/api/generate-claude-tc", async (req, res) => {
+  const { prompt, domain } = req.body;
+  const domainPrompt = PROMPTS[domain] || "";
+  const systemPrompt = `${COMMON_PROMPT}\n${domainPrompt}`;
+  const userPrompt = `아래는 테스트 대상이 되는 API 스펙이야:\n${prompt}`;
+
+  if (!ANTHROPIC_API_KEY) {
+    return res.status(500).json({ error: "Anthropic API Key not set" });
+  }
+
+  try {
+    const response = await fetch("https://api.anthropic.com/v1/messages", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-api-key": ANTHROPIC_API_KEY,
+        "anthropic-version": "2023-06-01",
+      },
+      body: JSON.stringify({
+        model: "claude-3-sonnet-20240229",
+        max_tokens: 4096,
+        system: systemPrompt,
+        messages: [{ role: "user", content: userPrompt }],
+      }),
+    });
+
+    const data = await response.json();
+    const text = data?.content?.[0]?.text ?? "No result";
+
+    res.json({ result: text });
+  } catch (err) {
+    console.error("Claude API error:", err);
+    res.status(500).json({ error: "Claude API 요청 실패" });
   }
 });
 
